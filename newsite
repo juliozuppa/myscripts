@@ -1,0 +1,156 @@
+#!/bin/bash
+
+if [ "$(whoami)" != 'root' ]; then
+	echo "You have no permission to run $0 as non-root user. Use sudo"
+	exit 1;
+fi
+
+domain=$1
+rootPath=$2
+owner='nginx'
+dirName=$domain
+sitesEnable='/etc/nginx/sites-enabled/'
+sitesAvailable='/etc/nginx/sites-available/'
+serverRoot='/usr/share/nginx/html/'
+domainRegex="^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]\.[a-zA-Z]{2,}$"
+
+while [ "$domain" = "" ]
+do
+	echo "Informe um domínio (Ex: exemplo.local):"
+	read domain
+done
+
+until [[ $domain =~ $domainRegex ]]
+do
+	echo "Domínio inválido, informe outro:"
+	read domain
+done
+
+if [ -e $sitesAvailable$domain ]; then
+	echo -e "\nEste domínio já existe\n"
+	exit;
+fi
+
+if [ "$rootPath" = "" ]; then
+	dirName="${domain//./_}";
+echo $dirName;
+	rootPath=$serverRoot$dirName;
+fi
+
+if ! [ -d $rootPath ]; then
+	mkdir $rootPath
+	chown $USER:$owner $rootPath -R
+	if ! echo "<?php phpinfo();" > $rootPath/index.php
+	then
+		echo "ERROR: não foi possível criar o arquivo $rootPath/index.php. Verifique as permissões."
+		exit;
+	else
+		echo "Adicionando conteúdo no arquivo: $rootPath/index.php"
+	fi
+fi
+
+if ! [ -d $sitesEnable ]; then
+	mkdir $sitesEnable
+fi
+
+if ! [ -d $sitesAvailable ]; then
+	mkdir $sitesAvailable
+fi
+
+configName=$domain
+
+if ! echo "server {
+        listen       80;
+        listen       [::]:80;
+        server_name $domain;
+        root $rootPath;
+
+	index index.php index.hh index.html index.htm;
+
+        # Load configuration files for the default server block.
+        include /etc/nginx/default.d/*.conf;
+
+	location = /favicon.ico { log_not_found off; access_log off; }
+	location = /robots.txt { log_not_found off; access_log off; }
+	access_log /var/log/nginx/$dirName.access.log;
+	error_log /var/log/nginx/$dirName.error.log;
+
+	location ~* \.(jpg|jpeg|gif|css|png|js|ico|xml)$ {
+		access_log off;
+		log_not_found off;
+		expires max;
+	}
+	# removes trailing slashes (prevents SEO duplicate content issues)
+	if (!-d \$request_filename) {
+		rewrite ^/(.+)/\$ /\$1 permanent;
+	}
+	# unless the request is for a valid file (image, js, css, etc.), send to bootstrap
+	if (!-e \$request_filename) {
+		rewrite ^/(.*)\$ /index.php?/\$1 last;
+		break;
+	}
+	# removes trailing 'index' from all controllers
+	if (\$request_uri ~* index/?\$) {
+		rewrite ^/(.*)/index/?\$ /\$1 permanent;
+	}
+
+        location / {
+		autoindex on;
+        }
+
+	location ~ \.php$ {
+              root $rootPath;
+              try_files \$uri =404;
+              fastcgi_split_path_info ^(.+\.php)(/.+)$;
+              fastcgi_pass   unix:/run/php-fpm/www.sock;
+              fastcgi_index  index.php;
+              fastcgi_param  SCRIPT_FILENAME  \$document_root\$fastcgi_script_name;
+              include        fastcgi_params;
+		autoindex on;
+	}
+
+	location ~ /\.ht {
+		deny all;
+	}
+
+	client_max_body_size 0;
+
+#        error_page 404 /404.html;
+#            location = /40x.html {
+#        }
+
+#        error_page 500 502 503 504 /50x.html;
+#            location = /50x.html {
+#        }
+    }
+
+
+
+
+
+
+" > $sitesAvailable$configName
+then
+	echo "ERROR: não foi possível criar o arquivo: $configName"
+	exit;
+else
+	echo "Novo vhost criado com sucesso"
+fi
+
+if ! echo "127.0.0.1	$domain" >> /etc/hosts
+then
+	echo "ERROR: falha ao escrever no arquivo /etc/hosts"
+	exit;
+else
+	echo -e "Host adicionado no arquivo /etc/hosts\n";
+	cat /etc/hosts;
+	echo -e "\n";
+fi
+
+ln -s $sitesAvailable$configName $sitesEnable$configName
+
+webserver restart
+
+echo -e "Sucesso! \nSeu novo host é: http://$domain \nE está localizado em: $rootPath"
+exit;
+

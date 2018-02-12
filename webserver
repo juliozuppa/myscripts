@@ -1,0 +1,9 @@
+#!/bin/bash
+if [ $# -eq 0 ]
+then
+	echo "Informe a ação (start|stop|restart)";
+else
+	service nginx $1
+	service php-fpm $1
+	service mysql $1
+fi
