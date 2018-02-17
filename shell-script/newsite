@@ -11,7 +11,7 @@ owner='nginx'
 dirName=$domain
 sitesEnable='/etc/nginx/sites-enabled/'
 sitesAvailable='/etc/nginx/sites-available/'
-serverRoot='/usr/share/nginx/html/'
+serverRoot='/var/www/html/'
 domainRegex="^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]\.[a-zA-Z]{2,}$"
 
 while [ "$domain" = "" ]
@@ -46,6 +46,7 @@ if ! [ -d $rootPath ]; then
 		exit;
 	else
 		echo "Adicionando conteúdo no arquivo: $rootPath/index.php"
+		chown $USER:$owner $rootPath/* -R
 	fi
 fi
 
@@ -99,6 +100,7 @@ if ! echo "server {
         }
 
 	location ~ \.php$ {
+	          include /etc/nginx/fastcgi_params;
               root $rootPath;
               try_files \$uri =404;
               fastcgi_split_path_info ^(.+\.php)(/.+)$;
